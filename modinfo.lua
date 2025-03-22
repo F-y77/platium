@@ -1,7 +1,7 @@
 name = "BBCF-Platium the Trinity"
 description = "白金三位一体-短发装，拥有能量护盾、闪避和月牙斩技能，以及多种被动效果。"
 author = "Va6gn"
-version = "0.3" 
+version = "0.32" 
 
 api_version = 10
 
@@ -56,3 +56,7 @@ configuration_options = {
         default = "KEY_G"
     }
 }
+
+-- 添加这些行来确保模组在正确的环境中运行
+client_only_mod = false
+server_only_mod = false

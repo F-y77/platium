@@ -1,4 +1,5 @@
-local GLOBAL = _G
+-- 使用这种方式获取全局变量
+GLOBAL = GLOBAL or _G
 
 PrefabFiles = {
 	"esctemplate",
@@ -42,6 +43,7 @@ Assets = {
 
 AddMinimapAtlas("images/map_icons/esctemplate.xml")
 
+-- 使用这种方式获取全局变量
 local require = GLOBAL.require
 local STRINGS = GLOBAL.STRINGS
 
@@ -80,6 +82,8 @@ local SpawnPrefab = GLOBAL.SpawnPrefab
 local TheWorld = GLOBAL.TheWorld
 local TheNet = GLOBAL.TheNet
 local TheFrontEnd = GLOBAL.TheFrontEnd
+local PostProcessor = GLOBAL.PostProcessor
+local ThePlayer = GLOBAL.ThePlayer
 
 -- 修改白金的护盾效果参数
 local SHIELD_DURATION = 3  -- 护盾持续时间改为3秒
@@ -453,9 +457,23 @@ local function InitComboSystem(inst)
     end
 end
 
+-- 在AddPlayerPostInit之前添加这个函数
+local function SafePostProcess(inst)
+    if not ThePlayer or not PostProcessor then return end
+    
+    -- 延迟执行后处理效果
+    inst:DoTaskInTime(0.1, function()
+        if inst.components.health and not inst.components.health:IsDead() then
+            -- 在这里添加任何后处理效果
+        end
+    end)
+end
+
 -- 修改玩家初始化函数，添加苍翼默示录特性
 AddPlayerPostInit(function(inst)
     if inst.prefab == "esctemplate" then
+        SafePostProcess(inst)
+        
         -- 添加技能按键监听
         inst:DoTaskInTime(1, function()
             if inst == GLOBAL.ThePlayer then

@@ -79,6 +79,11 @@ end
 
 -- 添加白金的被动效果
 local function AddPassiveEffects(inst)
+    if not inst or not inst:IsValid() then return end
+    
+    -- 确保组件存在
+    if not inst.components.locomotor then return end
+    
     -- 1. 制作速度加快50%
     if inst.components.builder then
         inst.components.builder.buildingmultiplier = 0.5  -- 制作时间减少50%
@@ -208,6 +213,8 @@ end
 
 -- 仅在服务器上初始化的部分
 local master_postinit = function(inst)
+    if not inst or not inst:IsValid() then return end
+    
     -- 设置起始物品
     inst.starting_inventory = start_inv[TheNet:GetServerGameMode()] or start_inv.default
     
@@ -240,6 +247,14 @@ local master_postinit = function(inst)
 
     -- 添加被动效果
     AddPassiveEffects(inst)
+
+    -- 安全地添加事件监听
+    if inst.components.health then
+        inst:ListenForEvent("healthdelta", function(inst, data)
+            if not inst:IsValid() then return end
+            -- ... 处理逻辑 ...
+        end)
+    end
 end
 
 return MakePlayerCharacter("esctemplate", prefabs, assets, common_postinit, master_postinit, prefabs)

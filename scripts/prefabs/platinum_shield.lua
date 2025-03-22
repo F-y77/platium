@@ -25,13 +25,15 @@ local function fn()
     inst.AnimState:SetMultColour(0.3, 0.5, 1, 0.7)  -- 蓝色调
     inst.AnimState:SetBloomEffectHandle("shaders/anim.ksh")
     
-    -- 添加光效
-    inst.entity:AddLight()
-    inst.Light:SetRadius(2)
-    inst.Light:SetFalloff(0.7)
-    inst.Light:SetIntensity(0.6)
-    inst.Light:SetColour(0.3, 0.5, 1)
-    inst.Light:Enable(true)
+    -- 使用安全的方式添加光效
+    if inst.entity:HasTag("FX") then
+        inst.entity:AddLight()
+        inst.Light:SetRadius(2)
+        inst.Light:SetFalloff(0.7)
+        inst.Light:SetIntensity(0.6)
+        inst.Light:SetColour(0.3, 0.5, 1)
+        inst.Light:Enable(true)
+    end
     
     -- 确保网络同步
     inst.Network:SetClassifiedTarget(inst)
