@@ -35,7 +35,7 @@ Assets = {
 	Asset( "IMAGE", "images/names_gold_esctemplate.tex" ),
     Asset( "ATLAS", "images/names_gold_esctemplate.xml" ),
     
-    Asset("ANIM", "anim/platinum_shield.zip"),
+    Asset("ANIM", "anim/abigail_shield.zip"),
 }
 
 AddMinimapAtlas("images/map_icons/esctemplate.xml")
@@ -71,16 +71,17 @@ local skin_modes = {
 
 -- 添加全局变量和键位绑定
 local TheInput = GLOBAL.TheInput
-local CONTROL_FORCE_INSPECT = GLOBAL.CONTROL_FORCE_INSPECT  -- V键
+local CONTROL_FORCE_INSPECT = GLOBAL.CONTROL_FORCE_INSPECT
 local FRAMES = GLOBAL.FRAMES
 local ACTIONS = GLOBAL.ACTIONS
 local SpawnPrefab = GLOBAL.SpawnPrefab
 local TheWorld = GLOBAL.TheWorld
 local TheNet = GLOBAL.TheNet
+local TheFrontEnd = GLOBAL.TheFrontEnd
 
--- 添加白金的护盾效果
-local SHIELD_DURATION = 5  -- 护盾持续时间（秒）
-local SHIELD_COOLDOWN = 15  -- 护盾冷却时间（秒）
+-- 修改白金的护盾效果参数
+local SHIELD_DURATION = 3  -- 护盾持续时间改为3秒
+local SHIELD_COOLDOWN = 10  -- 护盾冷却时间改为10秒
 
 -- 添加RPC事件用于网络同步
 AddModRPCHandler("PlatinumMod", "ActivateShield", function(player)
@@ -90,8 +91,31 @@ AddModRPCHandler("PlatinumMod", "ActivateShield", function(player)
     end
 end)
 
+-- 原始的OnAttacked函数（需要在ActivateShieldServer之前定义）
+local function OnAttacked(inst, data)
+    if not inst.components.health:IsDead() and not inst.sg:HasStateTag("attack") then
+        if math.random() < 0.25 then
+            if data.damage then
+                data.damage = 0
+            end
+            inst.SoundEmitter:PlaySound("dontstarve/wilson/hit_armour")
+            local fx = SpawnPrefab("sparks")
+            if fx then
+                fx.Transform:SetPosition(inst.Transform:GetWorldPosition())
+            end
+            return true
+        end
+    end
+    return false
+end
+
 -- 服务器端护盾激活函数
 local function ActivateShieldServer(inst)
+    -- 确保有计时器组件
+    if not inst.components.timer then
+        inst:AddComponent("timer")
+    end
+
     if inst.components.timer:TimerExists("shield_cooldown") then
         -- 如果护盾在冷却中，显示提示
         inst.components.talker:Say("护盾冷却中...")
@@ -125,6 +149,13 @@ local function ActivateShieldServer(inst)
         if data.name == "shield_duration" then
             -- 移除护盾
             inst:RemoveTag("platinum_shielded")
+            
+            -- 移除护盾视觉效果
+            if inst.platinum_shield_fx and inst.platinum_shield_fx:IsValid() then
+                inst.platinum_shield_fx:Remove()
+                inst.platinum_shield_fx = nil
+            end
+            
             inst.components.talker:Say("护盾已消失...")
             
             -- 设置冷却时间
@@ -136,7 +167,7 @@ end
 -- 客户端护盾激活函数
 local function ActivateShield(inst)
     -- 只在客户端发送RPC请求
-    if not TheWorld.ismastersim then
+    if TheWorld and not TheWorld.ismastersim then
         SendModRPCToServer(MOD_RPC["PlatinumMod"]["ActivateShield"])
     else
         -- 如果是主机，直接激活
@@ -144,11 +175,11 @@ local function ActivateShield(inst)
     end
 end
 
--- 修改OnAttacked函数以支持完全护盾
+-- 修改OnAttacked函数以支持完全护盾（确保100%无敌）
 local function OnAttackedWithShield(inst, data)
     if inst:HasTag("platinum_shielded") then
         -- 护盾激活时完全免疫伤害
-        if data.damage then
+        if data and data.damage then
             data.damage = 0
         end
         
@@ -159,52 +190,45 @@ local function OnAttackedWithShield(inst, data)
             fx.Transform:SetPosition(inst.Transform:GetWorldPosition())
         end
         
+        -- 确保不会受到任何伤害
         return true
     end
     
     -- 原有的25%几率护盾逻辑保持不变
-    if not inst.components.health:IsDead() and not inst.sg:HasStateTag("attack") then
-        if math.random() < 0.25 then
-            if data.damage then
-                data.damage = 0
-            end
-            inst.SoundEmitter:PlaySound("dontstarve/wilson/hit_armour")
-            local fx = SpawnPrefab("sparks")
-            if fx then
-                fx.Transform:SetPosition(inst.Transform:GetWorldPosition())
-            end
-            return true
-        end
-    end
-    
-    return false
+    return OnAttacked(inst, data)
 end
 
--- 添加按键监听
+-- 添加按键监听（改为R键）
 AddPlayerPostInit(function(inst)
     if inst.prefab == "esctemplate" then
-        -- 确保有计时器组件
-        if TheWorld.ismastersim and not inst.components.timer then
-            inst:AddComponent("timer")
-        end
-        
         -- 添加护盾激活按键监听（仅在本地玩家上）
-        inst:DoTaskInTime(0, function()
+        inst:DoTaskInTime(0.5, function()
             -- 检查是否是本地玩家
             if inst == GLOBAL.ThePlayer then
-                -- 使用KeyUp事件而不是KeyHandler组件
-                GLOBAL.TheInput:AddKeyUpHandler(GLOBAL.KEY_V, function()
+                -- 使用KeyUp事件，改为R键
+                GLOBAL.TheInput:AddKeyUpHandler(GLOBAL.KEY_R, function()
                     if inst:IsValid() and not inst:HasTag("playerghost") and 
-                       not inst.sg:HasStateTag("busy") and not GLOBAL.TheFrontEnd:GetActiveScreen():IsMessageScreenOpen() then
+                       not inst.sg:HasStateTag("busy") then
                         ActivateShield(inst)
                     end
                 end)
             end
             
             -- 服务器端替换原有的攻击处理函数
-            if TheWorld.ismastersim then
+            if TheWorld and TheWorld.ismastersim then
+                -- 确保我们不会重复添加事件监听器
                 inst:RemoveEventCallback("attacked", OnAttacked)
+                inst:RemoveEventCallback("attacked", OnAttackedWithShield)
                 inst:ListenForEvent("attacked", OnAttackedWithShield)
+                
+                -- 添加额外的伤害拦截，确保无敌状态下不会受到任何伤害
+                inst:ListenForEvent("healthdelta", function(inst, data)
+                    if inst:HasTag("platinum_shielded") and data.amount < 0 then
+                        -- 如果在护盾状态下受到伤害，恢复生命值
+                        inst.components.health:DoDelta(-data.amount)
+                        return true
+                    end
+                end)
             end
         end)
     end
