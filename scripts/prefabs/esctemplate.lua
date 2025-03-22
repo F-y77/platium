@@ -1,5 +1,8 @@
 local MakePlayerCharacter = require "prefabs/player_common"
 
+-- 添加这一行来获取全局变量
+local GLOBAL = _G
+
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
 }
@@ -11,8 +14,10 @@ TUNING.ESCTEMPLATE_SANITY = 250  -- 三位一体的精神
 
 -- 自定义起始物品
 TUNING.GAMEMODE_STARTING_ITEMS.DEFAULT.ESCTEMPLATE = {
-    "spear",     -- 给予一把矛作为起始武器
-    "armorwood", -- 给予一件木甲
+    "icestaff",     
+    "firestaff", 
+    "staff_lunarplant",
+    "amulet",
 }
 
 local start_inv = {}
@@ -72,6 +77,135 @@ local common_postinit = function(inst)
     inst:AddTag("battlemachine")
 end
 
+-- 添加白金的被动效果
+local function AddPassiveEffects(inst)
+    -- 1. 制作速度加快50%
+    if inst.components.builder then
+        inst.components.builder.buildingmultiplier = 0.5  -- 制作时间减少50%
+    end
+    
+    -- 2. 雇佣时间延长
+    inst:ListenForEvent("hirebyfood", function(inst, data)
+        local target = data.target
+        if target and target.components.follower then
+            -- 获取原始跟随时间
+            local original_time = target.components.follower.targettime - GetTime()
+            -- 延长50%的时间
+            local bonus_time = original_time * 0.5
+            target.components.follower:AddLoyaltyTime(bonus_time)
+            
+            -- 显示效果提示
+            if inst.components.talker then
+                inst.components.talker:Say("你会跟随我更久~")
+            end
+            
+            -- 添加特效
+            local fx = SpawnPrefab("heart")
+            if fx then
+                fx.Transform:SetPosition(target.Transform:GetWorldPosition())
+                fx.Transform:SetScale(1.5, 1.5, 1.5)
+            end
+        end
+    end)
+    
+    -- 3. 特殊合成能力 - 更便宜的生命护符
+    if inst.components.builder then
+        -- 添加特殊配方
+        local amulet_recipe = Recipe("amulet", 
+            {
+                Ingredient("redgem", 1),    -- 只需要1个红宝石(原版需要2个)
+                Ingredient("goldnugget", 2)  -- 只需要2个金块(原版需要3个)
+            }, 
+            RECIPETABS.MAGIC, 
+            TECH.MAGIC_ONE,
+            nil, nil, nil, nil, "platinum_builder")
+            
+        -- 只对白金角色可用
+        amulet_recipe.builder_tag = "platinum_builder"
+        
+        -- 添加特殊标签
+        inst:AddTag("platinum_builder")
+    end
+    
+    -- 4. 夜视能力 - 夜晚视野略微增强
+    if inst.components.playervision then
+        inst.components.playervision:ForceNightVision(true)
+        inst.components.playervision:SetCustomCCTable({
+            day = nil,
+            dusk = nil,
+            night = {brightness = 0, contrast = 0.8, saturation = 0.7, tint = {r=0.8, g=0.8, b=1}},
+            full_moon = nil,
+        })
+    end
+    
+    -- 5. 魔法亲和力 - 魔法装备耐久消耗减少
+    inst:ListenForEvent("equipped", function(inst, data)
+        local item = data.item
+        if item and item.components.finiteuses and 
+           (item:HasTag("magicitem") or item.prefab == "icestaff" or 
+            item.prefab == "firestaff" or item.prefab == "staff_lunarplant" or
+            item.prefab:find("amulet") or 
+            item.prefab:find("staff")) then
+            
+            -- 保存原始的耐久消耗函数
+            if not item.platinum_original_use_fn then
+                item.platinum_original_use_fn = item.components.finiteuses.onfinished
+            end
+            
+            -- 设置新的耐久消耗函数
+            item.components.finiteuses:SetConsumption(item.prefab, 0.75)  -- 减少25%的消耗
+            
+            if inst.components.talker then
+                inst.components.talker:Say("我能更好地使用这件魔法物品")
+            end
+        end
+    end)
+    
+    -- 当卸下魔法装备时恢复原始耐久消耗
+    inst:ListenForEvent("unequipped", function(inst, data)
+        local item = data.item
+        if item and item.components.finiteuses and item.platinum_original_use_fn then
+            item.components.finiteuses:SetConsumption(item.prefab, 1.0)  -- 恢复正常消耗
+        end
+    end)
+    
+    -- 6. 移动速度加成 (已在modmain.lua中实现)
+    
+    -- 7. 食物效果增强
+    if inst.components.eater then
+        local old_eat_fn = inst.components.eater.oneatfn
+        inst.components.eater.oneatfn = function(inst, food)
+            if old_eat_fn then
+                old_eat_fn(inst, food)
+            end
+            
+            -- 增强食物效果
+            if food and food.components.edible then
+                -- 如果是魔法或特殊食物，增加额外效果
+                if food:HasTag("magic") or food.prefab == "mandrakesoup" or 
+                   food.prefab == "butterflymuffin" or food.prefab == "waffles" then
+                    
+                    -- 增加理智
+                    if inst.components.sanity then
+                        inst.components.sanity:DoDelta(10)
+                    end
+                    
+                    -- 添加特效
+                    local fx = SpawnPrefab("sanity_lower")
+                    if fx then
+                        fx.Transform:SetPosition(inst.Transform:GetWorldPosition())
+                        fx.Transform:SetScale(1, 1, 1)
+                    end
+                    
+                    if inst.components.talker then
+                        inst.components.talker:Say("这食物真美味~")
+                    end
+                end
+            end
+        end
+    end
+end
+
 -- 仅在服务器上初始化的部分
 local master_postinit = function(inst)
     -- 设置起始物品
@@ -103,6 +237,9 @@ local master_postinit = function(inst)
 
     inst.OnLoad = onload
     inst.OnNewSpawn = onload
+
+    -- 添加被动效果
+    AddPassiveEffects(inst)
 end
 
 return MakePlayerCharacter("esctemplate", prefabs, assets, common_postinit, master_postinit, prefabs)

@@ -1,3 +1,5 @@
+local GLOBAL = _G
+
 local assets =
 {
 	Asset( "ANIM", "anim/esctemplate.zip" ),

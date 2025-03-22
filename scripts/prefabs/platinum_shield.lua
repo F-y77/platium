@@ -1,3 +1,5 @@
+local GLOBAL = _G
+
 local assets =
 {
     -- 使用阿比盖尔的保护罩效果
@@ -45,8 +47,8 @@ local function fn()
     -- 播放护盾激活音效
     inst.SoundEmitter:PlaySound("dontstarve/characters/wendy/abigail/shield/on")
     
-    -- 5秒后自动销毁
-    inst:DoTaskInTime(TUNING.ABIGAIL_SHIELD_DURATION or 5, function()
+    -- 3秒后自动销毁（与modmain.lua中的SHIELD_DURATION保持一致）
+    inst:DoTaskInTime(3, function()
         inst.AnimState:PlayAnimation("idle_pst")
         inst:ListenForEvent("animover", inst.Remove)
         inst.SoundEmitter:PlaySound("dontstarve/characters/wendy/abigail/shield/off")
